@@ -26,12 +26,13 @@ export default function Chat() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input, character: "조석" }),
+        body: JSON.stringify({ message: input, character: "유미" }),
       });
 
       if (!res.ok) throw new Error("응답 실패");
 
       const data = await res.json();
+      console.log(data);
       addMessage("bot", data.reply);
     } catch (err) {
       console.error("에러 발생:", err);
