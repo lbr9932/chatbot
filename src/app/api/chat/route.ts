@@ -29,6 +29,6 @@ export async function POST(req: Request) {
   const data = await res.json();
 
   return NextResponse.json({
-    reply: data.choices?.[0]?.message?.content,
+    reply: data.choices?.[0]?.message?.content || "오류가 발생했어요!",
   });
 }
