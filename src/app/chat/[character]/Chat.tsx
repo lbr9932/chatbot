@@ -1,19 +1,37 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useChatStore } from "@/store/chatStore";
+import { AssistantCharacter } from "@/constants/assistant";
 
-export default function Chat() {
+export default function Chat({
+  character,
+}: {
+  character?: AssistantCharacter;
+}) {
+  const [isClient, setIsClient] = useState(false);
+
+  //TODO : character change
   const { messages, addMessage } = useChatStore();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (messages.length === 0) {
-      addMessage("bot", "안녕하세요! 무엇을 도와드릴까요? 😊");
+
+  const init = useCallback(async () => {
+    try {
+      const res = await fetch("/api/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          character: character,
+        }),
+      });
+      if (!res.ok) throw new Error("응답 실패");
+    } catch (err) {
+      console.error("에러 발생:", err);
     }
-  }, [messages, addMessage]);
+  }, [character]);
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
@@ -26,13 +44,14 @@ export default function Chat() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input, character: "유미" }),
+        body: JSON.stringify({
+          message: input,
+        }),
       });
 
       if (!res.ok) throw new Error("응답 실패");
 
       const data = await res.json();
-      console.log(data);
       addMessage("bot", data.reply);
     } catch (err) {
       console.error("에러 발생:", err);
@@ -42,12 +61,25 @@ export default function Chat() {
   };
 
   useEffect(() => {
+    setIsClient(true);
+    init();
+  }, [init]);
+
+  useEffect(() => {
     chatContainerRef.current?.scrollTo({
       top: chatContainerRef.current.scrollHeight,
       behavior: "smooth",
     });
     inputRef.current?.focus();
   }, [messages]);
+
+  useEffect(() => {
+    if (isClient && messages.length === 0) {
+      addMessage("bot", "안녕하세요! 무엇을 도와드릴까요? 😊");
+    }
+  }, [isClient, messages, addMessage]);
+
+  if (!isClient) return null;
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-white">

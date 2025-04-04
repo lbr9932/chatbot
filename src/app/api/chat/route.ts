@@ -1,34 +1,78 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { Assistant } from "@/constants/assistant";
 
 export async function POST(req: Request) {
-  const { message, character } = await req.json();
+  const { message } = await req.json();
+  const cookieStore = await cookies();
+  let assistant: Assistant = {};
+  const assistantCookie = JSON.parse(
+    cookieStore.get("assistant")?.value || "{}"
+  ) as Assistant;
 
-  const characterPrompts: Record<string, string> = {
-    조석: "너는 '마음의 소리'의 조석이야. 익살스럽고 유머러스한 말투를 사용해.",
-    유미: "너는 '유미의 세포들'의 유미야. 감정적이고 귀여운 말투를 사용해.",
+  if (assistantCookie) assistant = assistantCookie;
+  const { threadId = undefined, id: assistantId = undefined } = assistant;
+
+  if (!threadId) return NextResponse.json({ status: 400 });
+
+  const headers = {
+    Authorization: `Bearer ${process.env.TEST_KEY}`,
+    "Content-Type": "application/json",
+    "OpenAI-Beta": "assistants=v2",
   };
 
-  const systemPrompt =
-    characterPrompts[character] || "일반적인 대화를 나누는 챗봇이야.";
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.TEST_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: message },
-      ],
+      role: "user",
+      content: message,
     }),
   });
 
-  const data = await res.json();
+  const runRes = await fetch(
+    `https://api.openai.com/v1/threads/${threadId}/runs`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        assistant_id: assistantId,
+      }),
+    }
+  );
+  const { id: runId } = await runRes.json();
+
+  console.log("Run response:", runId);
+
+  let status = "queued";
+  let attempts = 0;
+  while (status !== "completed" && attempts < 10) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const runCheck = await fetch(
+      `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,
+      { headers }
+    );
+    const { status: runStatus } = await runCheck.json();
+    status = runStatus;
+    attempts++;
+  }
+
+  const messagesRes = await fetch(
+    `https://api.openai.com/v1/threads/${threadId}/messages`,
+    { headers }
+  );
+  const messagesData = await messagesRes.json();
+
+  type Message = {
+    role: string;
+    content?: { text?: { value?: string } }[];
+  };
+
+  const lastMessage = messagesData.data?.find(
+    (msg: Message) => msg.role === "assistant"
+  );
 
   return NextResponse.json({
-    reply: data.choices?.[0]?.message?.content || "오류가 발생했어요!",
+    reply: lastMessage?.content?.[0]?.text?.value || "답변이 없어요!",
   });
 }
